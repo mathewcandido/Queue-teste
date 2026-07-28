@@ -1,0 +1,36 @@
+services:
+  mysql:
+    image: mysql:8
+    container_name: queue_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: queue
+      MYSQL_USER: queue
+      MYSQL_PASSWORD: queue
+    ports:
+      - "3307:3306"   # 3307 na host pra nao conflitar com MySQL local (XAMPP) no 3306
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  phpmyadmin:
+    image: phpmyadmin:5
+    container_name: queue_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+
+  redis:
+    image: redis:7
+    container_name: queue_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  mysql_data:

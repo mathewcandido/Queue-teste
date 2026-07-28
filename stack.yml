@@ -1,0 +1,79 @@
+# Swarm stack — deploy: docker stack deploy -c stack.yml queue
+# worker escala (replicas) e os jobs se dividem entre os containers.
+
+x-app-env: &app-env
+  DATABASE_URL: "mysql://queue:queue@mysql:3306/queue"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: queue
+      MYSQL_USER: queue
+      MYSQL_PASSWORD: queue
+    ports:
+      - "3307:3306" # host access pra migrate/phpmyadmin externo
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - appnet
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379" # publicado pro autoscaler (roda na host) ler os counts
+    networks:
+      - appnet
+
+  phpmyadmin:
+    image: phpmyadmin:5
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+    ports:
+      - "8080:80"
+    networks:
+      - appnet
+
+  api:
+    image: queue-app:latest
+    command: ["yarn", "tsx", "src/server.ts"]
+    environment:
+      <<: *app-env
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    networks:
+      - appnet
+    deploy:
+      replicas: 1
+
+  worker:
+    image: queue-app:latest
+    command: ["yarn", "tsx", "src/worker.ts"]
+    environment:
+      <<: *app-env
+    networks:
+      - appnet
+    deploy:
+      replicas: 2 # ponto de partida; autoscaler sobe a cada 100 jobs
+
+  relay:
+    image: queue-app:latest
+    command: ["yarn", "tsx", "src/relay.ts"]
+    environment:
+      <<: *app-env
+    networks:
+      - appnet
+    deploy:
+      replicas: 1 # lê a outbox e publica na fila (SKIP LOCKED permite >1)
+
+networks:
+  appnet:
+    driver: overlay
+
+volumes:
+  mysql_data:

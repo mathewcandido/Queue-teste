@@ -1,0 +1,8 @@
+node_modules
+.env
+dist
+.git
+generated
+.yarn/cache
+.yarn/install-state.gz
+npm-debug.log
