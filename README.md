@@ -9,7 +9,7 @@ estruturaria uma aplicação desse tipo se fosse o responsável pelo projeto: um
 pela API, é enfileirado e processado de forma assíncrona por *workers* que escalam
 horizontalmente conforme a fila cresce.
 
-![Arquitetura](architecture.png)
+![Arquitetura](architecture.svg)
 
 ---
 
