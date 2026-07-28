@@ -6,30 +6,31 @@
 
 O objetivo **não** é reproduzir a arquitetura real da empresa, e sim mostrar como eu
 estruturaria uma aplicação desse tipo se fosse o responsável pelo projeto: um pedido entra
-pela API, é enfileirado e processado de forma assíncrona por *workers* que escalam
+pela API, é enfileirado e processado de forma assíncrona por _workers_ que escalam
 horizontalmente conforme a fila cresce.
 
-![Arquitetura](architecture.svg)
+![Arquitetura](./doc/screenshots/excalidraw.png)
 
 ---
 
 ## Stack
 
-| Camada | Tecnologia |
-|--------|------------|
+| Camada              | Tecnologia           |
+| ------------------- | -------------------- |
 | Runtime / linguagem | Node.js + TypeScript |
-| API | Express |
-| Fila de jobs | BullMQ (sobre Redis) |
-| Banco | MySQL |
-| ORM / migrations | Prisma |
-| Orquestração (demo) | Docker Swarm |
-| UI do banco | phpMyAdmin |
+| API                 | Express              |
+| Fila de jobs        | BullMQ (sobre Redis) |
+| Banco               | MySQL                |
+| ORM / migrations    | Prisma               |
+| Orquestração (demo) | Docker Swarm         |
+| UI do banco         | phpMyAdmin           |
 
 ---
 
 ## Decisões de arquitetura
 
 ### SaaS multi-tenant — Shared Database
+
 Todos os estabelecimentos compartilham a mesma base. Cada linha carrega a coluna
 `tenantId` (ver [`prisma/schema.prisma`](prisma/schema.prisma), modelo `Order`), com índices
 `@@index([tenantId])` e `@@index([tenantId, status])` para manter as consultas performáticas
@@ -38,14 +39,16 @@ conforme a base cresce.
 Para o escopo deste exemplo existe **uma** tabela (`Order`) como amostra do padrão — num
 produto real o mesmo `tenantId` se repetiria nas demais tabelas do domínio.
 
-Na minha visão o *shared database* dá o melhor equilíbrio entre custo, simplicidade
+Na minha visão o _shared database_ dá o melhor equilíbrio entre custo, simplicidade
 operacional e escalabilidade para esse tipo de produto.
 
 ### API REST
+
 Comunicação cliente↔servidor via REST — madura, amplamente adotada e suficiente para o
 cenário.
 
 ### Arquitetura em camadas
+
 Separação de responsabilidades em **Controller → Service → Repository**:
 
 - **Controller** — valida a entrada (Zod) e devolve a resposta HTTP.
@@ -57,6 +60,7 @@ worker e persistência sem o excesso de indireção de um DDD completo. Num dom�
 múltiplos agregados e regras complexas — eu evoluiria para DDD.
 
 ### Tratamento de erros
+
 Erros são centralizados num **error-handler** (middleware final do Express):
 
 - **Zod** (validação) → `400` com a lista de problemas.
@@ -69,6 +73,7 @@ exponencial); o `Service.process` é **idempotente** (job reprocessado num pedid
 não quebra).
 
 ### Transactional Outbox — não perde pedido
+
 Enfileirar **depois** de commitar o pedido tem um furo: se o processo cair entre o commit e o
 `queue.add`, o pedido existe mas nunca é processado. A solução é o **outbox**:
 
@@ -84,9 +89,10 @@ Garante entrega **at-least-once**; a idempotência no processamento cobre a dupl
 escala maior, o mesmo papel pode ser feito por CDC (ex.: Debezium) lendo o binlog.
 
 ### Processamento assíncrono
+
 Tarefas pesadas (pagamento, estoque, cozinha, notificação) **não** bloqueiam a resposta da
 API. O pedido é criado com status `PENDING`, enfileirado no BullMQ e processado por um
-*worker* — que ao final marca `FINISHED` e grava em `processedBy` o *hostname* do container
+_worker_ — que ao final marca `FINISHED` e grava em `processedBy` o _hostname_ do container
 que processou. É assim que dá pra **ver a divisão de carga** entre réplicas.
 
 ---
@@ -110,9 +116,9 @@ Worker (1..N réplicas) consome o job
 
 ### Endpoints
 
-| Método | Rota | Body | Descrição |
-|--------|------|------|-----------|
-| `GET`  | `/health` | — | healthcheck |
+| Método | Rota      | Body                                                     | Descrição               |
+| ------ | --------- | -------------------------------------------------------- | ----------------------- |
+| `GET`  | `/health` | —                                                        | healthcheck             |
 | `POST` | `/orders` | `{ "tenantId": 1, "customer": "Fulano", "total": 42.5 }` | cria pedido e enfileira |
 
 ---
@@ -155,6 +161,7 @@ scripts/
 ## Como rodar
 
 ### Pré-requisitos
+
 Docker Desktop, Node 20+.
 
 > A porta do MySQL é publicada em **3307** no host (evita conflito com um MySQL local no 3306).
@@ -184,6 +191,7 @@ yarn swarm:scaler                # liga o autoscaler (deixe rodando num terminal
 > Alterne com `yarn db:down` ↔ `yarn swarm:down`.
 
 ### Acessos
+
 - API: http://localhost:3000
 - phpMyAdmin: http://localhost:8080 — usuário `queue` / senha `queue`
 
@@ -199,7 +207,7 @@ curl -X POST http://localhost:3000/orders \
 
 ## Escalabilidade — o ponto central
 
-A API e os *workers* escalam **horizontalmente e de forma independente**: picos de tráfego
+A API e os _workers_ escalam **horizontalmente e de forma independente**: picos de tráfego
 sobem réplicas de API; acúmulo de trabalho pesado sobe réplicas de worker. O banco fica
 isolado da camada de aplicação e as tarefas caras ficam desacopladas pela fila.
 
@@ -217,12 +225,12 @@ seq 1 10000 | xargs -P 100 -I {} curl -s -X POST http://localhost:3000/orders \
 
 Resultado observado:
 
-| Métrica | Valor |
-|---------|-------|
-| Réplicas de worker | escalou **1 → 10** conforme o backlog |
-| Concorrência por worker | 5 (`WORKER_CONCURRENCY`) → ~50 jobs simultâneos |
-| Distribuição | jobs divididos entre todos os containers (visível em `processedBy`) |
-| Ao drenar | autoscaler reduz as réplicas de volta |
+| Métrica                 | Valor                                                               |
+| ----------------------- | ------------------------------------------------------------------- |
+| Réplicas de worker      | escalou **1 → 10** conforme o backlog                               |
+| Concorrência por worker | 5 (`WORKER_CONCURRENCY`) → ~50 jobs simultâneos                     |
+| Distribuição            | jobs divididos entre todos os containers (visível em `processedBy`) |
+| Ao drenar               | autoscaler reduz as réplicas de volta                               |
 
 Parâmetros ajustáveis por env: `SCALE_STEP`, `SCALE_MIN`, `SCALE_MAX`, `SCALE_POLL_MS`,
 `WORKER_CONCURRENCY`, `PROC_STEP_MS`, `VERBOSE`.
